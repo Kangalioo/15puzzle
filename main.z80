@@ -12,7 +12,7 @@ main:
 #include "/home/kangalio/devel/tiasm/lib/shuffle.z80"
 
 chooseAction:
-	call	_ClrScrnFull
+	call	_ClrLCDFull
 	call	_HomeUp
 	ld	hl, chooseActionStr1
 	call	_PutS
@@ -65,15 +65,45 @@ generateLevel:
 	; 
 	; rawDataField and dataField might look like this:
 	; rawDataField: 3, 2, 0, 1, 4
-	; dataField (before): 1, 0, 1, 1, 1, 0, 1, 0, 0
-	; dataField (after): 3, 0, 2, 0, 1, 0, 4, 0, 0
+	; dataField (before): 0, 255, 0, 0, 0, 255, 0, 255, 255
+	; dataField (after): 3, 255, 2, 0, 1, 255, 4, 255, 255
 	; currFreeCell: 3
-	; 
-	; Now, DO IT :)
+	
+	ld	c, 0 ; Address in rawDataField
+	ld	e, 0 ; Address in dataField
+_gl_loop:
+	; Check if dataField[e] is wall. If true, then
+	; skip setting dataField[e] to rawDataField[c].
+	ld	hl, dataField
+	ld	d, 0
+	add	hl, de
+	ld	a, (hl)
+	cp	255
+	jr	z, _gl_incrementAndJump
+	
+	; dataField[e] = rawDataField[c++]
+	push	de
+	ex	de, hl ; Reuse generated dataField[e] address from above
+	ld	hl, rawDataField
+	ld	b, 0
+	add	hl, bc
+	ld	a, (hl)
+	ld	(de), a
+	inc	c
+	pop	de
+	
+_gl_incrementAndJump:
+	inc	e
+	ld	a, (dataFieldSize)
+	ld	b, a
+	ld	a, e
+	cp	b
+	jr	nz, _gl_loop
+	
 	ret
 
 enterPlayMode:
-	call	_ClrScrnFull
+	call	_ClrLCDFull
 	ld	a, 3
 	ld	(CurRow), a
 	ld	a, 1
@@ -84,6 +114,7 @@ enterPlayMode:
 	
 	ld	a, 0
 	ld	(displayMode), a
+	call	_ClrLCDFull
 	call	redrawField
 	call	play
 	
@@ -91,7 +122,7 @@ enterPlayMode:
 ;playLevel
 
 enterEditMode:
-	call	_ClrScrnFull
+	call	_ClrLCDFull
 	ld	a, 1
 	ld	(displayMode), a
 	call	redrawField
@@ -158,7 +189,7 @@ _e_toggleCell:
 	ld	de, dataField
 	add	hl, de
 	ld	a, (hl)
-	xor	1 ; Flip LSB
+	xor	0FFh ; Flip all bits
 	ld	(hl), a
 	cp	0
 	jr	nz, _e_cellIsNowNum
@@ -214,7 +245,7 @@ _e_right:
 ;processMove
 
 readDimensions:
-	call	_ClrScrnFull
+	call	_ClrLCDFull
 	
 	; Ask for width
 	call	_HomeUp
@@ -335,8 +366,13 @@ dispBytePlay:
 	
 	ld	a, (hl)
 	cp	0
+	jr	z, _dbp_end ; 0 means free cell. A free cell is not drawn - it's free.
+	cp	255
 	jr	nz, _dbp_num
 _dbp_wall:
+	ld	a, (CurCol)
+	add	a, 4
+	ld	(CurCol), a
 	ld	a, 0F1h
 	call	_PutC
 	jr	_dbp_end
@@ -362,9 +398,10 @@ dispByteEdit:
 	set	TextInverse, (IY + TextFlags)
 _dbe_dontInverseChar:
 	; Output the character (for real this time)
-	ld	a, (hl)
-	ld	e, a
 	ld	d, 0
+	ld	a, (hl)
+	inc	a ; 0 -> 1 (free cell) and 255 -> 0 (wall)
+	ld	e, a
 	ld	hl, fieldLayoutChars
 	add	hl, de
 	ld	a, (hl)
@@ -442,13 +479,13 @@ currFreeCell: ; Address (rel. to dataField) of current free cell
 dataFieldSize: ; Product of width and height
 	.db	0
 dataField:
-	.fill	8*5, 1
-_shuffle_arrayLength .equ rawDataFieldSize
+	.fill	8*5, 0
 rawDataFieldSize:
 	.db	0
-_shuffle_array .equ rawDataField
 rawDataField: ; Data field without walls (temp only, but still required)
 	.fill	$ - dataField, 0 ; Make as big as dataField
+_shuffle_arrayLength .equ rawDataFieldSize
+_shuffle_array .equ rawDataField
 amountOfWalls:
 	.db	0
 fieldLayoutChars:
