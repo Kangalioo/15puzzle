@@ -80,6 +80,11 @@ _gl_loop:
 	ld	a, (hl)
 	cp	255
 	jr	z, _gl_incrementAndJump
+	cp	0
+	jr	nz, _gl_dontSetCurrFreeCell
+	ld	a, e
+	ld	(currFreeCell), a
+_gl_dontSetCurrFreeCell:
 	
 	; dataField[e] = rawDataField[c++]
 	push	de
@@ -189,7 +194,14 @@ _e_toggleCell:
 	ld	de, dataField
 	add	hl, de
 	ld	a, (hl)
-	xor	0FFh ; Flip all bits
+	cp	255
+	jr	z, _e_makeCellNum
+_e_makeCellWall:
+	ld	a, 255
+	jr	_e_writeCell
+_e_makeCellNum:
+	ld	a, 0
+_e_writeCell:
 	ld	(hl), a
 	cp	0
 	jr	nz, _e_cellIsNowNum
@@ -400,11 +412,14 @@ _dbe_dontInverseChar:
 	; Output the character (for real this time)
 	ld	d, 0
 	ld	a, (hl)
-	inc	a ; 0 -> 1 (free cell) and 255 -> 0 (wall)
-	ld	e, a
-	ld	hl, fieldLayoutChars
-	add	hl, de
-	ld	a, (hl)
+	cp	255
+	jr	z, _dbe_dispWall
+_dbe_dispNum:
+	ld	a, t0
+	jr	_dbe_printChar
+_dbe_dispWall
+	ld	a, 0F1h
+_dbe_printChar:
 	call	_PutC
 	; Reset text inversion
 	res	TextInverse, (IY + TextFlags)
