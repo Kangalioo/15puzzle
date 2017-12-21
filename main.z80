@@ -78,9 +78,9 @@ _gl_loop:
 	ld	d, 0
 	add	hl, de
 	ld	a, (hl)
-	cp	255
+	cp	wallCell
 	jr	z, _gl_incrementAndJump
-	cp	0
+	cp	freeCell
 	jr	nz, _gl_dontSetCurrFreeCell
 	ld	a, e
 	ld	(currFreeCell), a
@@ -194,16 +194,16 @@ _e_toggleCell:
 	ld	de, dataField
 	add	hl, de
 	ld	a, (hl)
-	cp	255
+	cp	wallCell
 	jr	z, _e_makeCellNum
 _e_makeCellWall:
-	ld	a, 255
+	ld	a, wallCell
 	jr	_e_writeCell
 _e_makeCellNum:
 	ld	a, 0
 _e_writeCell:
 	ld	(hl), a
-	cp	255
+	cp	wallCell
 	jr	nz, _e_cellIsNowNum
 _e_cellIsNowWall:
 	ld	a, (amountOfWalls)
@@ -266,7 +266,7 @@ readDimensions:
 	
 	; Read and echo answer for width
 	ld	b, 2 ; Min value (in.)
-	ld	c, 6 ; Max value (ex.)
+	ld	c, maxWidth + 1 ; Max value (ex.)
 	call	readDigitAndEcho
 	ld	(width), a
 	call	_NewLine
@@ -277,7 +277,7 @@ readDimensions:
 	
 	; Read and echo answer for height
 	ld	b, 2 ; Min value (in.)
-	ld	c, 9 ; Max value (ex.)
+	ld	c, maxHeight + 1 ; Max value (ex.)
 	call	readDigitAndEcho
 	ld	(height), a
 	call	_NewLine
@@ -377,15 +377,15 @@ dispBytePlay:
 	ld	(CurCol), a
 	
 	ld	a, (hl)
-	cp	0
-	jr	z, _dbp_end ; 0 means free cell. A free cell is not drawn - it's free.
-	cp	255
+	cp	freeCell
+	jr	z, _dbp_end ; A free cell is not drawn - it's free.
+	cp	wallCell
 	jr	nz, _dbp_num
 _dbp_wall:
 	ld	a, (CurCol)
 	add	a, 4
 	ld	(CurCol), a
-	ld	a, 0F1h
+	ld	a, tUnavailable
 	call	_PutC
 	jr	_dbp_end
 _dbp_num:
@@ -412,13 +412,13 @@ _dbe_dontInverseChar:
 	; Output the character (for real this time)
 	ld	d, 0
 	ld	a, (hl)
-	cp	255
+	cp	wallCell
 	jr	z, _dbe_dispWall
 _dbe_dispNum:
 	ld	a, t0
 	jr	_dbe_printChar
 _dbe_dispWall
-	ld	a, 0F1h
+	ld	a, tUnavailable
 _dbe_printChar:
 	call	_PutC
 	; Reset text inversion
@@ -438,7 +438,7 @@ readDigitAndEcho:
 	push	bc
 	call	_GetKey
 	pop	bc
-	sub	142 ; Code of 0
+	sub	k0
 	; Check if key is in range
 	cp	b
 	jr	c, readDigitAndEcho
@@ -447,7 +447,7 @@ readDigitAndEcho:
 	
 	; Echo pressed digit
 	ld	b, a
-	add	a, 48 ; ASCII for 0
+	add	a, t0 ; ASCII for 0
 	call	_PutC
 	ld	a, b
 	ret
@@ -465,6 +465,13 @@ _hte_skip:
 	djnz   _hte_loop
 	ret
 ;hTimesE
+
+; CONSTANTS
+maxWidth	.equ	5
+maxHeight	.equ	8
+tUnavailable	.equ	0F1h
+wallCell	.equ	255
+freeCell	.equ	0
 
 ; RAM CONSTANTS
 widthQuestion:
@@ -497,18 +504,17 @@ currFreeCell: ; Address (rel. to dataField) of current free cell
 dataFieldSize: ; Product of width and height
 	.db	0
 dataField:
-	.fill	8*5, 0
+	.fill	maxWidth * maxHeight, 0
 rawDataFieldSize:
 	.db	0
 rawDataField: ; Data field without walls (temp only, but still required)
 	.fill	$ - dataField, 0 ; Make as big as dataField
 _shuffle_arrayLength .equ rawDataFieldSize
 _shuffle_array .equ rawDataField
-.echo	$
 amountOfWalls:
 	.db	0
 fieldLayoutChars:
-	.db	0F1h, "0"
+	.db	tUnavailable, "0"
 displayMode:
 	; 0 = Play, 1 - 255 = Edit layout
 	.db	0
