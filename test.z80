@@ -1,0 +1,461 @@
+#include "/home/kangalio/devel/tiasm/lib/incFiles.inc"
+
+.org 9327h
+main:
+	call	initialize
+	call	readDimensions
+	call	chooseAction
+	call	finalize
+	ret
+;main
+
+#include "/home/kangalio/devel/tiasm/lib/shuffle.z80"
+
+chooseAction:
+	call	_ClrScrnFull
+	call	_HomeUp
+	ld	hl, chooseActionStr1
+	call	_PutS
+	call	_NewLine
+	ld	hl, chooseActionStr2
+	call	_PutS
+	call	_NewLine
+	ld	hl, chooseActionStr3
+	call	_PutS
+	call	_NewLine
+	
+	call	_GetKey
+	cp	kQuit
+	jr	z, _ca_ret
+	cp	kClear
+	jr	z, _ca_ret
+	cp	k1
+	jr	z, _ca_play
+	cp	k2
+	jr	z, _ca_editLayout
+_ca_repeat:
+	jr	chooseAction
+_ca_editLayout:
+	call	enterEditMode
+	jr	_ca_repeat
+_ca_play:
+	ld	a, 0
+	ld	(currCellX), a
+	ld	(currCellY), a
+	call	enterPlayMode
+	jr	_ca_repeat
+_ca_ret:
+	ret
+;chooseAction
+
+generateLevel:
+	ld	a, (amountOfWalls)
+	ld	b, a
+	ld	a, (dataFieldSize)
+	sub	b
+	ld	(rawDataFieldSize), a
+	
+	call	fillWithAscending
+	call	shuffle
+	; Now we've got the shuffled array of numbers in rawDataField,
+	; but there are no walls in them. We have to put the contents of
+	; rawDataField together with the walls in dataField. The position
+	; of the zero from rawDataField in dataField will be stored
+	; in currFreeCell.
+	; 
+	; rawDataField and dataField might look like this:
+	; rawDataField: 3, 2, 0, 1, 4
+	; dataField (before): 1, 0, 1, 1, 1, 0, 1, 0, 0
+	; dataField (after): 3, 0, 2, 0, 1, 0, 4, 0, 0
+	; currFreeCell: 3
+	; 
+	; Now, DO IT :)
+	ret
+
+enterPlayMode:
+	call	_ClrScrnFull
+	ld	a, 3
+	ld	(CurRow), a
+	ld	a, 1
+	ld	(CurCol), a
+	ld	hl, lvlGenerateMsg
+	call	_PutS
+	call	generateLevel
+	
+	ld	a, 0
+	ld	(displayMode), a
+	call	redrawField
+	call	play
+	
+	ret
+;playLevel
+
+enterEditMode:
+	call	_ClrScrnFull
+	ld	a, 1
+	ld	(displayMode), a
+	call	redrawField
+	call	edit
+	
+	ret
+;enterEditMode
+
+initialize:
+	res	AppAutoScroll, (IY + AppFlags) ; Disable scrolling
+	res	IndicRun, (IY + IndicFlags) ; Disable run indicator
+	
+	ret
+
+;initialize
+
+finalize:
+	set	IndicRun, (IY + IndicFlags) ; Enable run indicator
+	set	AppAutoScroll, (IY + AppFlags) ; Enable scrolling
+	
+	call	_ClrScrnFull
+	call	_HomeUp
+	
+	ret
+;finalize
+
+play:
+	call	_GetKey
+	cp	kQuit
+	jr	z, _e_ret
+	cp	kClear
+	jr	z, _e_ret
+	; STUB
+	call	redrawField
+	jr	play
+_p_ret
+	ret
+;play
+
+edit:
+	call	_GetKey
+	cp	kEnter
+	jr	z, _e_toggleCell
+	cp	kQuit
+	jr	z, _e_ret
+	cp	kClear
+	jr	z, _e_ret
+	call	processMove
+	;~ jr	_e_redrawField
+_e_redrawField:
+	call	redrawField
+	jr	edit
+_e_toggleCell:
+	ld	a, (currCellY)
+	ld	h, a
+	ld	a, (width)
+	ld	e, a
+	call	hTimesE ; Result of multiplication is in hl
+	ld	a, (currCellX)
+	ld	b, a
+	ld	a, l
+	add	a, b
+	ld	l, a
+	ld	de, dataField
+	add	hl, de
+	ld	a, (hl)
+	xor	1 ; Flip LSB
+	ld	(hl), a
+	cp	0
+	jr	nz, _e_cellIsNowNum
+_e_cellIsNowWall:
+	ld	a, (amountOfWalls)
+	inc	a
+	jr	_e_end
+_e_cellIsNowNum:
+	ld	a, (amountOfWalls)
+	dec	a
+_e_end:
+	ld	(amountOfWalls), a
+	
+	jr	_e_redrawField
+_e_ret:
+	ret
+;edit
+
+; If one of the arrow keys was pressed, adjust currCellX and currCellY accordingly.
+; Assumes the key code to be in 'a'. Also destroys 'a'.
+; 
+; DESTROYS: 'a'
+processMove:
+	cp	kDown
+	jr	z, _e_down
+	cp	kUp
+	jr	z, _e_up
+	cp	kLeft
+	jr	z, _e_left
+	cp	kRight
+	jr	z, _e_right
+	ret
+_e_down:
+	ld	a, (currCellY)
+	inc	a
+	ld	(currCellY), a
+	ret
+_e_left:
+	ld	a, (currCellX)
+	dec	a
+	ld	(currCellX), a
+	ret
+_e_up:
+	ld	a, (currCellY)
+	dec	a
+	ld	(currCellY), a
+	ret
+_e_right:
+	ld	a, (currCellX)
+	inc	a
+	ld	(currCellX), a
+	ret
+;processMove
+
+readDimensions:
+	call	_ClrScrnFull
+	
+	; Ask for width
+	call	_HomeUp
+	ld	hl, widthQuestion
+	call	_PutS
+	
+	; Read and echo answer for width
+	ld	b, 2 ; Min value (in.)
+	ld	c, 6 ; Max value (ex.)
+	call	readDigitAndEcho
+	ld	(width), a
+	call	_NewLine
+	
+	; Ask for height
+	ld	hl, heightQuestion
+	call	_PutS
+	
+	; Read and echo answer for height
+	ld	b, 2 ; Min value (in.)
+	ld	c, 9 ; Max value (ex.)
+	call	readDigitAndEcho
+	ld	(height), a
+	call	_NewLine
+	
+	; Calculate size of data field
+	ld	a, (width)
+	ld	h, a
+	ld	a, (height)
+	ld	e, a
+	call	hTimesE
+	ld	a, l
+	ld	(dataFieldSize), a
+	
+	; Reset cursor (not the one from TI-OS) position
+	ld	a, 0
+	ld	(currCellX), a
+	ld	(currCellY), a
+	
+	ret
+;readDimensions
+
+redrawField:
+	ld	c, 0 ; 'c' counts forwards...
+_rf_drawRow:
+	ld	a, (width)
+	ld	b, a ; ...but 'b' counts backwards
+	dec	b
+_rf_drawCell:
+	; Calculate address of cell data
+	; dataField addr
+	ld	hl, dataField
+	; + cell index
+	ld	d, 0
+	add	hl, de
+	; byte at 'hl' stored into 'hl'
+	ld	l, (hl)
+	ld	h, 0
+	; 'de' backup
+	push	de
+	; Calculate address of cell char
+	ld	de, fieldLayoutChars
+	add	hl, de
+	; 'de' backup
+	pop	de
+	; Set cursor position from b (column) and c (row).
+	ld	a, b
+	ld	(CurCol), a
+	ld	a, c
+	ld	(CurRow), a
+	; Generate byte addr
+	ld	h, c
+	ld	a, (width)
+	ld	e, a
+	push	bc
+	call	hTimesE
+	pop	bc
+	ld	a, l
+	add	a, b
+	ld	hl, dataField
+	ld	d, 0
+	ld	e, a
+	add	hl, de
+	; Output character using dispBytePlay / dispByteEdit
+	push	bc
+	ld	a, (displayMode)
+	cp	0
+	jr	nz, _rf_c_edit
+	;~ jr	z, _rf_c_play
+_rf_c_play:
+	call	dispBytePlay
+	jr	_rf_c_end
+_rf_c_edit:
+	call	dispByteEdit
+	;~ jr	_rf_c_end
+_rf_c_end:
+	pop	bc
+	
+	; Increment loop counters and check loop condition
+	ld	a, b
+	dec	b
+	cp	0
+	jr	nz, _rf_drawCell
+	inc	c
+	ld	a, (height)
+	cp	c
+	jr	nz, _rf_drawRow
+	
+	ret
+;redrawField
+
+dispBytePlay:
+	ld	a, (CurCol)
+	ld	b, a
+	add	a, b
+	;~ add	a, b
+	;~ sub	3
+	ld	(CurCol), a
+	
+	ld	a, (hl)
+	cp	0
+	jr	nz, _dbp_num
+_dbp_wall:
+	ld	a, 0F1h
+	call	_PutC
+	jr	_dbp_end
+_dbp_num:
+	ld	l, (hl)
+	ld	h, 0
+	call	_DispHL
+_dbp_end:
+	
+	ret
+;dispBytePlay
+
+dispByteEdit:
+	; Check if x matches currCell
+	ld	a, (currCellX)
+	cp	b
+	jr	nz, _dbe_dontInverseChar
+	; Check if y matches currCell
+	ld	a, (currCellY)
+	cp	c
+	jr	nz, _dbe_dontInverseChar
+	; Inverse text (is skipped if x or y don't match with currCell)
+	set	TextInverse, (IY + TextFlags)
+_dbe_dontInverseChar:
+	; Output the character (for real this time)
+	ld	a, (hl)
+	ld	e, a
+	ld	d, 0
+	ld	hl, fieldLayoutChars
+	add	hl, de
+	ld	a, (hl)
+	call	_PutC
+	; Reset text inversion
+	res	TextInverse, (IY + TextFlags)
+	
+	ret
+;dispByteEdit
+
+; Reads a digit from a key press.
+; Arguments:
+; 	b: Min value of digit (inclusive)
+; 	c: Max value of digit (exclusive)
+; Returns:
+; 	a: Digit (0 - 9)
+readDigitAndEcho:
+	; Read key until digit in range 'b'-'c' was pressed
+	push	bc
+	call	_GetKey
+	pop	bc
+	sub	142 ; Code of 0
+	; Check if key is in range
+	cp	b
+	jr	c, readDigitAndEcho
+	cp	c
+	jr	nc, readDigitAndEcho
+	
+	; Echo pressed digit
+	ld	b, a
+	add	a, 48 ; ASCII for 0
+	call	_PutC
+	ld	a, b
+	ret
+;readDigitAndEcho
+
+hTimesE: ; hl = h * e
+	ld	d, 0 ; Zero 'd' and 'l'
+	ld	l, d
+	ld	b, 8
+_hte_loop:
+	add	hl, hl ; Get most-significant bit of 'hl'
+	jr	nc, _hte_skip
+	add	hl, de
+_hte_skip:
+	djnz   _hte_loop
+	ret
+;hTimesE
+
+; RAM CONSTANTS
+widthQuestion:
+	.db	"Enter width: ", 0
+heightQuestion:
+	.db	"Enter height: ", 0
+chooseActionStr1:
+	.db	"Do you want to", 0
+chooseActionStr2:
+	.db	" 1) Play level", 0
+chooseActionStr3:
+	.db	" 2) Edit layout", 0
+lvlGenerateMsg:
+	.db	"Gen. level...", 0
+
+; RAM VARIABLES
+width:
+	.db	0
+height:
+	.db	0
+currCellX: ; In play mode: X offset. In edit mode: current selected cell X
+	.db	0
+currCellY: ; In play mode: Y offset. In edit mode: current selected cell Y
+	.db	0
+currFreeCell: ; Address (rel. to dataField) of current free cell
+	.db	0
+dataFieldSize: ; Product of width and height
+	.db	0
+dataField:
+	.fill	8*5, 1
+_shuffle_arrayLength .equ rawDataFieldSize
+rawDataFieldSize:
+	.db	0
+_shuffle_array .equ rawDataField
+rawDataField: ; Data field without walls (temp only, but still required)
+	.fill	$ - dataField, 0 ; Make as big as dataField
+amountOfWalls:
+	.db	0
+fieldLayoutChars:
+	.db	0F1h, "0"
+displayMode:
+	; 0 = Play, 1 - 255 = Edit layout
+	.db	0
+
+.end
+.end
