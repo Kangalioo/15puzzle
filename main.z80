@@ -203,7 +203,7 @@ _e_makeCellNum:
 	ld	a, 0
 _e_writeCell:
 	ld	(hl), a
-	cp	0
+	cp	255
 	jr	nz, _e_cellIsNowNum
 _e_cellIsNowWall:
 	ld	a, (amountOfWalls)
@@ -481,6 +481,9 @@ lvlGenerateMsg:
 	.db	"Gen. level...", 0
 
 ; RAM VARIABLES
+.echo	"The RAM variables begin at "
+.echo	$
+.echo	".\n"
 width:
 	.db	0
 height:
@@ -501,6 +504,7 @@ rawDataField: ; Data field without walls (temp only, but still required)
 	.fill	$ - dataField, 0 ; Make as big as dataField
 _shuffle_arrayLength .equ rawDataFieldSize
 _shuffle_array .equ rawDataField
+.echo	$
 amountOfWalls:
 	.db	0
 fieldLayoutChars:
