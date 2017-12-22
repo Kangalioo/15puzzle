@@ -106,6 +106,7 @@ _gl_incrementAndJump:
 	jr	nz, _gl_loop
 	
 	ret
+;generateLevel
 
 enterPlayMode:
 	call	_ClrLCDFull
@@ -157,15 +158,65 @@ finalize:
 play:
 	call	_GetKey
 	cp	kQuit
-	jr	z, _e_ret
+	jr	z, _p_ret
 	cp	kClear
-	jr	z, _e_ret
-	; STUB
+	jr	z, _p_ret
+	
+	call	executeMove
+	
 	call	redrawField
 	jr	play
 _p_ret
 	ret
 ;play
+
+calculateDataFieldPos:
+	.echo $
+	call	posOfKey
+	ld	a, b
+	cp	255 ; Code by posOfKey function for unknown key
+	jr	z, _cdfp_ret
+	and	111000b ; Extract row
+	srl	a
+	srl	a
+	srl	a
+	ld	h, a
+	ld	a, (width)
+	ld	e, a
+	push	bc ; To keep 'b'
+	call	hTimesE
+	pop	bc
+	ld	a, b
+	and	000111b ; Extract column
+	ld	d, 0
+	ld	e, a
+	add	hl, de
+_cdfp_ret:
+	ret
+;calculateDataFieldPos
+
+executeMove:
+	call	calculateDataFieldPos
+	push	hl
+	ld	de, dataField
+	add	hl, de
+	ld	d, (hl)
+	ld	a, freeCell
+	ld	(hl), a
+	ld	hl, dataField
+	ld	b, 0
+	ld	a, (currFreeCell)
+	ld	c, a
+	add	hl, bc
+	ld	(hl), d
+	
+	; Update currFreeCell
+	pop	hl
+	ld	a, l
+	ld	(currFreeCell), a
+	
+	ret
+;executeMove
 
 edit:
 	call	_GetKey
@@ -176,7 +227,6 @@ edit:
 	cp	kClear
 	jr	z, _e_ret
 	call	processMove
-	;~ jr	_e_redrawField
 _e_redrawField:
 	call	redrawField
 	jr	edit
@@ -474,6 +524,7 @@ wallCell	.equ	255
 freeCell	.equ	0
 
 ; RAM CONSTANTS
+#include "/home/kangalio/devel/tiasm/lib/scTable.inc"
 widthQuestion:
 	.db	"Enter width: ", 0
 heightQuestion:
