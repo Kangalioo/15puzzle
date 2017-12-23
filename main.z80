@@ -271,7 +271,8 @@ keyPressActionPlay:
 .echo	$
 .echo	".\n"
 keyPressActionEdit:
-	call	calculateDFAFromKey
+	call	calculateDataFieldCoordsFromKey
+	call	calculateDataFieldAddress
 	ld	de, dataField
 	add	hl, de
 	ld	a, (hl)
@@ -322,37 +323,56 @@ dispActionEdit:
 ;~ dispActionEdit
 
 ; Like dispActionEditWithoutConversion, just without 'b' and 'c' given.
-dispActionEdit:
+dispActionEditCalculateCoords:
 	call	calculateDataFieldCoordinates
 	jr	dispActionEditWithoutConversion
 ;~ dispActionEdit
 
-
-; DFA = data field address (relative, as always). Is returned in 'hl' register.
-calculateDFAFromKey:
+; The coordinates to the address (relative to dataField) in 'hl'.
+; Result is in 'b' and 'c'.
+calculateDataFieldCoordsFromKey:
 	call	posOfKey
+	
+	; Return if unknown key was pressed
+	ld	a, b
 	cp	255 ; Code returned by posOfKey function for unknown key
 	jr	z, _cdfp_ret
+	
+	; Subtract keyOffset
 	ld	a, (keyOffset)
 	ld	c, a
 	ld	a, b
 	sub	c
 	ld	b, a
-	and	111000b ; Extract row
+	
+	; Extract row
+	and	111000b
 	srl	a
 	srl	a
 	srl	a
-	ld	h, a
-	ld	a, (width)
-	ld	e, a
-	push	bc ; To keep 'b'
-	call	hTimesE
-	pop	bc
+	ld	d, a
+	
+	; Extract column
 	ld	a, b
-	and	000111b ; Extract column
-	ld	d, 0
-	ld	e, a
-	add	hl, de
+	and	000111b
+	
+	; Put row and column into 'c' and 'b', respectively
+	ld	b, a
+	ld	c, d
+	;~ ld	b, a
+	;~ ld	a, (width)
+	;~ ld	e, a
+	;~ push	bc ; To keep 'b'
+	;~ call	hTimesE
+	;~ pop	bc
+	;~ ld	a, b
+	;~ and	000111b ; Extract column
+	;~ ld	d, 0
+	;~ ld	e, a
+	;~ add	hl, de
+	
+	ret
+;calculateDataFieldCoordsFromKey
 
 _cdfp_ret:
 	ret
