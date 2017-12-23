@@ -25,10 +25,7 @@ chooseAction:
 	call	_NewLine
 	
 	call	_GetKey
-	cp	kQuit
-	jr	z, _ca_ret
-	cp	kClear
-	jr	z, _ca_ret
+	call	exitIfRequested
 	cp	k1
 	jr	z, _ca_play
 	cp	k2
@@ -39,12 +36,9 @@ _ca_editLayout:
 	call	enterEditMode
 	jr	_ca_repeat
 _ca_play:
-	ld	a, 0
-	ld	(currCellX), a
-	ld	(currCellY), a
 	call	enterPlayMode
 	jr	_ca_repeat
-_ca_ret:
+	
 	ret
 ;chooseAction
 
@@ -78,13 +72,8 @@ _gl_loop:
 	ld	d, 0
 	add	hl, de
 	ld	a, (hl)
-	cp	wallCell
+	cp	WALL_CELL
 	jr	z, _gl_incrementAndJump
-	cp	freeCell
-	jr	nz, _gl_dontSetCurrFreeCell
-	ld	a, e
-	ld	(currFreeCell), a
-_gl_dontSetCurrFreeCell:
 	
 	; dataField[e] = rawDataField[c++]
 	push	de
@@ -92,6 +81,12 @@ _gl_dontSetCurrFreeCell:
 	ld	hl, rawDataField
 	ld	b, 0
 	add	hl, bc
+	ld	a, (hl)
+	cp	FREE_CELL
+	jr	nz, _gl_dontSetCurrFreeCell
+	ld	a, e
+	ld	(currFreeCell), a
+_gl_dontSetCurrFreeCell:
 	ld	a, (hl)
 	ld	(de), a
 	inc	c
@@ -117,22 +112,30 @@ enterPlayMode:
 	ld	hl, lvlGenerateMsg
 	call	_PutS
 	call	generateLevel
-	
-	ld	a, 0
-	ld	(displayMode), a
 	call	_ClrLCDFull
-	call	redrawField
-	call	play
+	
+	ld	hl, keyPressActionPlay ; This is a function pointer
+	ld	(keyPressAction), hl
+	ld	hl, dispActionPlay
+	ld	(dispAction), hl
+	
+	call	startSession
 	
 	ret
 ;playLevel
 
+.echo	"Enter Edit Mode: "
+.echo	$
+.echo	".\n"
 enterEditMode:
 	call	_ClrLCDFull
-	ld	a, 1
-	ld	(displayMode), a
-	call	redrawField
-	call	edit
+	
+	ld	hl, keyPressActionEdit ; This is a function pointer
+	ld	(keyPressAction), hl
+	ld	hl, dispActionEdit
+	ld	(dispAction), hl
+	
+	call	startSession
 	
 	ret
 ;enterEditMode
@@ -155,27 +158,369 @@ finalize:
 	ret
 ;finalize
 
-play:
+;~ play:
+	;~ call	_GetKey
+	;~ cp	kQuit
+	;~ jr	z, _p_ret
+	;~ cp	kClear
+	;~ jr	z, _p_ret
+	
+	;~ call	executeMove
+	
+	;~ call	_ClrLCDFull
+	;~ call	redrawField
+	;~ jr	play
+;~ _p_ret
+	;~ ret
+;~ ;play
+
+;~ calculateDataFieldPos:
+	;~ call	posOfKey
+	;~ ld	a, (keyOffset)
+	;~ ld	c, a
+	;~ ld	a, b
+	;~ sub	c
+	;~ ld	b, a
+	;~ cp	255 ; Code returned by posOfKey function for unknown key
+	;~ jr	z, _cdfp_ret
+	;~ and	111000b ; Extract row
+	;~ srl	a
+	;~ srl	a
+	;~ srl	a
+	;~ ld	h, a
+	;~ ld	a, (width)
+	;~ ld	e, a
+	;~ push	bc ; To keep 'b'
+	;~ call	hTimesE
+	;~ pop	bc
+	;~ ld	a, b
+	;~ and	000111b ; Extract column
+	;~ ld	d, 0
+	;~ ld	e, a
+	;~ add	hl, de
+;~ _cdfp_ret:
+	;~ ret
+;~ ;calculateDataFieldPos
+
+; Number to be moved is in 'hl'.
+validateKey:
+	; STUB
+	
+	ret
+
+;~ executeMove:
+	;~ call	calculateDataFieldPos
+	;~ call	validateKey
+	;~ push	hl
+	;~ ld	de, dataField
+	;~ add	hl, de
+	;~ ld	d, (hl)
+	;~ ld	a, FREE_CELL
+	;~ ld	(hl), a
+	;~ ld	hl, dataField
+	;~ ld	b, 0
+	;~ ld	a, (currFreeCell)
+	;~ ld	c, a
+	;~ add	hl, bc
+	;~ ld	(hl), d
+	
+	;~ ; Update currFreeCell
+	;~ pop	hl
+	;~ ld	a, l
+	;~ ld	(currFreeCell), a
+	
+	;~ ret
+;~ ;executeMove
+
+;~ edit:
+	;~ call	_GetKey
+	;~ cp	kEnter
+	;~ jr	z, _e_toggleCell
+	;~ cp	kQuit
+	;~ jr	z, _e_ret
+	;~ cp	kClear
+	;~ jr	z, _e_ret
+	;~ call	processMove
+;~ _e_redrawField:
+	;~ call	redrawField
+	;~ jr	edit
+;~ _e_toggleCell:
+	;~ ld	a, (currCellY)
+	;~ ld	h, a
+	;~ ld	a, (width)
+	;~ ld	e, a
+	;~ call	hTimesE ; Result of multiplication is in hl
+	;~ ld	a, (currCellX)
+	;~ ld	b, a
+	;~ ld	a, l
+	;~ add	a, b
+	;~ ld	l, a
+	;~ ld	de, dataField
+	;~ add	hl, de
+	;~ ld	a, (hl)
+	;~ cp	wallCell
+	;~ jr	z, _e_makeCellNum
+;~ _e_makeCellWall:
+	;~ ld	a, wallCell
+	;~ jr	_e_writeCell
+;~ _e_makeCellNum:
+	;~ ld	a, 0
+;~ _e_writeCell:
+	;~ ld	(hl), a
+	;~ cp	wallCell
+	;~ jr	nz, _e_cellIsNowNum
+;~ _e_cellIsNowWall:
+	;~ ld	a, (amountOfWalls)
+	;~ inc	a
+	;~ jr	_e_end
+;~ _e_cellIsNowNum:
+	;~ ld	a, (amountOfWalls)
+	;~ dec	a
+;~ _e_end:
+	;~ ld	(amountOfWalls), a
+	
+	;~ jr	_e_redrawField
+;~ _e_ret:
+	;~ ret
+;~ ;edit
+
+; If one of the arrow keys was pressed, adjust currCellX and currCellY accordingly.
+; Assumes the key code to be in 'a'. Also destroys 'a'.
+; 
+; DESTROYS: 'a'
+;~ processMove:
+	;~ cp	kDown
+	;~ jr	z, _e_down
+	;~ cp	kUp
+	;~ jr	z, _e_up
+	;~ cp	kLeft
+	;~ jr	z, _e_left
+	;~ cp	kRight
+	;~ jr	z, _e_right
+	;~ ret
+;~ _e_down:
+	;~ ld	a, (currCellY)
+	;~ inc	a
+	;~ ld	(currCellY), a
+	;~ ret
+;~ _e_left:
+	;~ ld	a, (currCellX)
+	;~ dec	a
+	;~ ld	(currCellX), a
+	;~ ret
+;~ _e_up:
+	;~ ld	a, (currCellY)
+	;~ dec	a
+	;~ ld	(currCellY), a
+	;~ ret
+;~ _e_right:
+	;~ ld	a, (currCellX)
+	;~ inc	a
+	;~ ld	(currCellX), a
+	;~ ret
+;~ ;processMove
+
+readDimensions:
+	call	_ClrLCDFull
+	
+	; Ask for width
+	call	_HomeUp
+	ld	hl, widthQuestion
+	call	_PutS
+	
+	; Read and echo answer for width
+	ld	b, 2 ; Min value (in.)
+	ld	c, MAX_WIDTH + 1 ; Max value (ex.)
+	call	readDigitAndEcho
+	ld	(width), a
+	call	_NewLine
+	
+	; Ask for height
+	ld	hl, heightQuestion
+	call	_PutS
+	
+	; Read and echo answer for height
+	ld	b, 2 ; Min value (in.)
+	ld	c, MAX_HEIGHT + 1 ; Max value (ex.)
+	call	readDigitAndEcho
+	ld	(height), a
+	call	_NewLine
+	
+	; Calculate size of data field
+	ld	a, (width)
+	ld	h, a
+	ld	a, (height)
+	ld	e, a
+	call	hTimesE
+	ld	a, l
+	ld	(dataFieldSize), a
+	
+	;~ ; Reset cursor (not the one from TI-OS) position
+	;~ ld	a, 0
+	;~ ld	(currCellX), a
+	;~ ld	(currCellY), a
+	
+	ret
+;readDimensions
+
+exitIfRequested:
+	cp	kClear
+	jr	z, _eir_exit
+	cp	kQuit
+	jr	z, _eir_exit
+	ret
+_eir_exit:
+	pop	hl ; Get rid of calling address, we want to jump a level above it
+	ret
+;exitIfRequested
+
+.echo	"Start Session: "
+.echo	$
+.echo	".\n"
+startSession:
+	call	_ClrLCDFull
+	call	redrawField
+_ss_getKey:
 	call	_GetKey
 	cp	kQuit
-	jr	z, _p_ret
-	cp	kClear
-	jr	z, _p_ret
-	
-	call	executeMove
-	
-	call	redrawField
-	jr	play
-_p_ret
+	jr	nz, _ss_dontRet
 	ret
-;play
+_ss_dontRet:
+	ld	hl, _ss_getKey
+	push	hl
+	ld	hl, (keyPressAction)
+	jp	(hl)
+	
+	; No, the "ret" is not missing here. Look above.
+;startSession
 
-calculateDataFieldPos:
-	.echo $
-	call	posOfKey
+redrawField:
+	ld	c, 0 ; Y
+_rf_drawRow:
+	ld	b, 0 ; X
+_rf_drawCell:
+	;~ ; Calculate address of cell data
+	;~ ; dataField addr
+	;~ ld	hl, dataField
+	;~ ; + cell index
+	;~ ld	d, 0
+	;~ add	hl, de
+	;~ ; byte at 'hl' stored into 'hl'
+	;~ ld	l, (hl)
+	;~ ld	h, 0
+	;~ ; 'de' backup
+	;~ push	de
+	;~ ; Calculate address of cell char
+	;~ ld	de, fieldLayoutChars
+	;~ add	hl, de
+	;~ ; 'de' backup
+	;~ pop	de
+	;~ ; Set cursor position from b (column) and c (row).
+	;~ ld	a, b
+	;~ ld	(CurCol), a
+	;~ ld	a, c
+	;~ ld	(CurRow), a
+	;~ ; Generate byte addr
+	;~ ld	h, c
+	;~ ld	a, (width)
+	;~ ld	e, a
+	;~ push	bc
+	;~ call	hTimesE
+	;~ pop	bc
+	;~ ld	a, l
+	;~ add	a, b
+	;~ ld	hl, dataField
+	;~ ld	d, 0
+	;~ ld	e, a
+	;~ add	hl, de
+	; Output character using dispAction
+	push	bc
+	ld	hl, _rf_afterCall ; Manual "call"
+	push	hl ; Manual "call"
+	ld	hl, (dispAction) ; Manual "call"
+	jp	(hl) ; Manual "call"
+_rf_afterCall:
+	pop	bc
+	
+	; Increment loop counters and check loop condition
+	inc	b
+	ld	a, (width)
+	cp	b
+	jr	nz, _rf_drawCell
+	inc	c
+	ld	a, (height)
+	cp	c
+	jr	nz, _rf_drawRow
+	
+	ret
+;redrawField
+
+keyPressActionPlay:
+	; STUB
+	
+	ret
+;keyPressActionPlay
+
+.echo	"Key press action (for edit): "
+.echo	$
+.echo	".\n"
+keyPressActionEdit:
+	call	calculateDFAFromKey
+	ld	de, dataField
+	add	hl, de
+	ld	a, (hl)
+	xor	11111111b 
+	ld	(hl), a
+	call	_ClrLCDFull ; REMEMBER
+	call	redrawField
+	
+	ret
+;~ keyPressActionEdit
+
+dispActionPlay:
+	; STUB
+	
+	ret
+;~ dispActionPlay
+
+dispActionEdit:
 	ld	a, b
-	cp	255 ; Code by posOfKey function for unknown key
+	add	a, b
+	add	a, b
+	add	a, a
+	ld	(PenCol), a
+	ld	a, c
+	add	a, c
+	add	a, c
+	add	a, a
+	ld	(PenRow), a
+	
+	call	calculateDataFieldAddress
+	ld	de, dataField
+	add	hl, de
+	ld	a, (hl)
+	cp	255
+	jr	z, _dae_drawWall
+_dae_drawNum:
+	ld	a, 48
+	jr	_dae_draw
+_dae_drawWall:
+	ld	a, 49 ; STUB: Replace this
+_dae_draw:
+	call	_VPutMap
+	ret
+;~ dispActionEdit
+
+; DFA = data field address (relative, as always). Is returned in 'hl' register.
+calculateDFAFromKey:
+	call	posOfKey
+	cp	255 ; Code returned by posOfKey function for unknown key
 	jr	z, _cdfp_ret
+	ld	a, (keyOffset)
+	ld	c, a
+	ld	a, b
+	sub	c
+	ld	b, a
 	and	111000b ; Extract row
 	srl	a
 	srl	a
@@ -191,291 +536,91 @@ calculateDataFieldPos:
 	ld	d, 0
 	ld	e, a
 	add	hl, de
+
 _cdfp_ret:
 	ret
-;calculateDataFieldPos
+;calculatePosFromKey
 
-executeMove:
-	call	calculateDataFieldPos
-	push	hl
-	ld	de, dataField
-	add	hl, de
-	ld	d, (hl)
-	ld	a, freeCell
-	ld	(hl), a
-	ld	hl, dataField
-	ld	b, 0
-	ld	a, (currFreeCell)
-	ld	c, a
-	add	hl, bc
-	ld	(hl), d
-	
-	; Update currFreeCell
-	pop	hl
-	ld	a, l
-	ld	(currFreeCell), a
-	
-	ret
-;executeMove
-
-edit:
-	call	_GetKey
-	cp	kEnter
-	jr	z, _e_toggleCell
-	cp	kQuit
-	jr	z, _e_ret
-	cp	kClear
-	jr	z, _e_ret
-	call	processMove
-_e_redrawField:
-	call	redrawField
-	jr	edit
-_e_toggleCell:
-	ld	a, (currCellY)
-	ld	h, a
-	ld	a, (width)
-	ld	e, a
-	call	hTimesE ; Result of multiplication is in hl
-	ld	a, (currCellX)
-	ld	b, a
-	ld	a, l
-	add	a, b
-	ld	l, a
-	ld	de, dataField
-	add	hl, de
-	ld	a, (hl)
-	cp	wallCell
-	jr	z, _e_makeCellNum
-_e_makeCellWall:
-	ld	a, wallCell
-	jr	_e_writeCell
-_e_makeCellNum:
-	ld	a, 0
-_e_writeCell:
-	ld	(hl), a
-	cp	wallCell
-	jr	nz, _e_cellIsNowNum
-_e_cellIsNowWall:
-	ld	a, (amountOfWalls)
-	inc	a
-	jr	_e_end
-_e_cellIsNowNum:
-	ld	a, (amountOfWalls)
-	dec	a
-_e_end:
-	ld	(amountOfWalls), a
-	
-	jr	_e_redrawField
-_e_ret:
-	ret
-;edit
-
-; If one of the arrow keys was pressed, adjust currCellX and currCellY accordingly.
-; Assumes the key code to be in 'a'. Also destroys 'a'.
-; 
-; DESTROYS: 'a'
-processMove:
-	cp	kDown
-	jr	z, _e_down
-	cp	kUp
-	jr	z, _e_up
-	cp	kLeft
-	jr	z, _e_left
-	cp	kRight
-	jr	z, _e_right
-	ret
-_e_down:
-	ld	a, (currCellY)
-	inc	a
-	ld	(currCellY), a
-	ret
-_e_left:
-	ld	a, (currCellX)
-	dec	a
-	ld	(currCellX), a
-	ret
-_e_up:
-	ld	a, (currCellY)
-	dec	a
-	ld	(currCellY), a
-	ret
-_e_right:
-	ld	a, (currCellX)
-	inc	a
-	ld	(currCellX), a
-	ret
-;processMove
-
-readDimensions:
-	call	_ClrLCDFull
-	
-	; Ask for width
-	call	_HomeUp
-	ld	hl, widthQuestion
-	call	_PutS
-	
-	; Read and echo answer for width
-	ld	b, 2 ; Min value (in.)
-	ld	c, maxWidth + 1 ; Max value (ex.)
-	call	readDigitAndEcho
-	ld	(width), a
-	call	_NewLine
-	
-	; Ask for height
-	ld	hl, heightQuestion
-	call	_PutS
-	
-	; Read and echo answer for height
-	ld	b, 2 ; Min value (in.)
-	ld	c, maxHeight + 1 ; Max value (ex.)
-	call	readDigitAndEcho
-	ld	(height), a
-	call	_NewLine
-	
-	; Calculate size of data field
-	ld	a, (width)
-	ld	h, a
-	ld	a, (height)
-	ld	e, a
-	call	hTimesE
-	ld	a, l
-	ld	(dataFieldSize), a
-	
-	; Reset cursor (not the one from TI-OS) position
-	ld	a, 0
-	ld	(currCellX), a
-	ld	(currCellY), a
-	
-	ret
-;readDimensions
-
-redrawField:
-	ld	c, 0 ; 'c' counts forwards...
-_rf_drawRow:
-	ld	a, (width)
-	ld	b, a ; ...but 'b' counts backwards
-	dec	b
-_rf_drawCell:
-	; Calculate address of cell data
-	; dataField addr
-	ld	hl, dataField
-	; + cell index
-	ld	d, 0
-	add	hl, de
-	; byte at 'hl' stored into 'hl'
-	ld	l, (hl)
-	ld	h, 0
-	; 'de' backup
-	push	de
-	; Calculate address of cell char
-	ld	de, fieldLayoutChars
-	add	hl, de
-	; 'de' backup
-	pop	de
-	; Set cursor position from b (column) and c (row).
-	ld	a, b
-	ld	(CurCol), a
-	ld	a, c
-	ld	(CurRow), a
-	; Generate byte addr
+; X pos is assumed in 'b' and y pos is assumed in 'c'.
+; Result (in 'hl') is relative to dataField.
+.echo	"calculateDataFieldAddress: "
+.echo	$
+.echo	".\n"
+calculateDataFieldAddress:
+	; hl = c * (width)
 	ld	h, c
 	ld	a, (width)
 	ld	e, a
-	push	bc
+	push	bc; To keep 'bc'
 	call	hTimesE
 	pop	bc
-	ld	a, l
-	add	a, b
-	ld	hl, dataField
+	
+	; hl += b
 	ld	d, 0
-	ld	e, a
+	ld	e, b
 	add	hl, de
-	; Output character using dispBytePlay / dispByteEdit
-	push	bc
-	ld	a, (displayMode)
-	cp	0
-	jr	nz, _rf_c_edit
-	;~ jr	z, _rf_c_play
-_rf_c_play:
-	call	dispBytePlay
-	jr	_rf_c_end
-_rf_c_edit:
-	call	dispByteEdit
-	;~ jr	_rf_c_end
-_rf_c_end:
-	pop	bc
-	
-	; Increment loop counters and check loop condition
-	ld	a, b
-	dec	b
-	cp	0
-	jr	nz, _rf_drawCell
-	inc	c
-	ld	a, (height)
-	cp	c
-	jr	nz, _rf_drawRow
 	
 	ret
-;redrawField
+;calculateDataFieldAddress
 
-dispBytePlay:
-	ld	a, (CurCol)
-	ld	b, a
-	add	a, b
+;~ dispBytePlay:
+	;~ ld	a, (CurCol)
+	;~ ld	b, a
 	;~ add	a, b
-	;~ sub	3
-	ld	(CurCol), a
+	add	a, b
+	sub	3
+	;~ ld	(CurCol), a
 	
-	ld	a, (hl)
-	cp	freeCell
-	jr	z, _dbp_end ; A free cell is not drawn - it's free.
-	cp	wallCell
-	jr	nz, _dbp_num
-_dbp_wall:
-	ld	a, (CurCol)
-	add	a, 4
-	ld	(CurCol), a
-	ld	a, tUnavailable
-	call	_PutC
-	jr	_dbp_end
-_dbp_num:
-	ld	l, (hl)
-	ld	h, 0
-	call	_DispHL
-_dbp_end:
+	;~ ld	a, (hl)
+	;~ cp	FREE_CELL
+	;~ jr	z, _dbp_end ; A free cell is not drawn - it's free.
+	;~ cp	WALL_CELL
+	;~ jr	nz, _dbp_num
+;~ _dbp_wall:
+	;~ ld	a, (CurCol)
+	;~ add	a, 4
+	;~ ld	(CurCol), a
+	;~ ld	a, T_UNAVAILABLE
+	;~ call	_PutC
+	;~ jr	_dbp_end
+;~ _dbp_num:
+	;~ ld	l, (hl)
+	;~ ld	h, 0
+	;~ call	_DispHL
+;~ _dbp_end:
 	
-	ret
-;dispBytePlay
+	;~ ret
+;~ ;dispBytePlay
 
-dispByteEdit:
-	; Check if x matches currCell
-	ld	a, (currCellX)
-	cp	b
-	jr	nz, _dbe_dontInverseChar
-	; Check if y matches currCell
-	ld	a, (currCellY)
-	cp	c
-	jr	nz, _dbe_dontInverseChar
-	; Inverse text (is skipped if x or y don't match with currCell)
-	set	TextInverse, (IY + TextFlags)
-_dbe_dontInverseChar:
-	; Output the character (for real this time)
-	ld	d, 0
-	ld	a, (hl)
-	cp	wallCell
-	jr	z, _dbe_dispWall
-_dbe_dispNum:
-	ld	a, t0
-	jr	_dbe_printChar
-_dbe_dispWall
-	ld	a, tUnavailable
-_dbe_printChar:
-	call	_PutC
-	; Reset text inversion
-	res	TextInverse, (IY + TextFlags)
+;~ dispByteEdit:
+	;~ ; Check if x matches currCell
+	;~ ld	a, (currCellX)
+	;~ cp	b
+	;~ jr	nz, _dbe_dontInverseChar
+	;~ ; Check if y matches currCell
+	;~ ld	a, (currCellY)
+	;~ cp	c
+	;~ jr	nz, _dbe_dontInverseChar
+	;~ ; Inverse text (is skipped if x or y don't match with currCell)
+	;~ set	TextInverse, (IY + TextFlags)
+;~ _dbe_dontInverseChar:
+	;~ ; Output the character (for real this time)
+	;~ ld	d, 0
+	;~ ld	a, (hl)
+	;~ cp	WALL_CELL
+	;~ jr	z, _dbe_dispWall
+;~ _dbe_dispNum:
+	;~ ld	a, t0
+	;~ jr	_dbe_printChar
+;~ _dbe_dispWall
+	;~ ld	a, T_UNAVAILABLE
+;~ _dbe_printChar:
+	;~ call	_PutC
+	;~ ; Reset text inversion
+	;~ res	TextInverse, (IY + TextFlags)
 	
-	ret
-;dispByteEdit
+	;~ ret
+;~ ;dispByteEdit
 
 ; Reads a digit from a key press.
 ; Arguments:
@@ -517,11 +662,11 @@ _hte_skip:
 ;hTimesE
 
 ; CONSTANTS
-maxWidth	.equ	5
-maxHeight	.equ	8
-tUnavailable	.equ	0F1h
-wallCell	.equ	255
-freeCell	.equ	0
+MAX_WIDTH	.equ	5
+MAX_HEIGHT	.equ	8
+T_UNAVAILABLE	.equ	0F1h
+WALL_CELL	.equ	255
+FREE_CELL	.equ	0
 
 ; RAM CONSTANTS
 #include "/home/kangalio/devel/tiasm/lib/scTable.inc"
@@ -546,16 +691,22 @@ width:
 	.db	0
 height:
 	.db	0
-currCellX: ; In play mode: X offset. In edit mode: current selected cell X
+cellOffsetX: ; In play mode: X offset. In edit mode: current selected cell X
 	.db	0
-currCellY: ; In play mode: Y offset. In edit mode: current selected cell Y
+cellOffsetY: ; In play mode: Y offset. In edit mode: current selected cell Y
 	.db	0
+cellX: ; X coordinate of the currently important cell
+	.db	0
+cellY: ; X coordinate of the currently important cell
+	.db	0
+keyOffset:
+	.db	6*8+1 ; Row 6 Column 1: That's the 7 key
 currFreeCell: ; Address (rel. to dataField) of current free cell
 	.db	0
 dataFieldSize: ; Product of width and height
 	.db	0
 dataField:
-	.fill	maxWidth * maxHeight, 0
+	.fill	MAX_WIDTH * MAX_HEIGHT, 0
 rawDataFieldSize:
 	.db	0
 rawDataField: ; Data field without walls (temp only, but still required)
@@ -565,10 +716,11 @@ _shuffle_array .equ rawDataField
 amountOfWalls:
 	.db	0
 fieldLayoutChars:
-	.db	tUnavailable, "0"
-displayMode:
-	; 0 = Play, 1 - 255 = Edit layout
-	.db	0
+	.db	T_UNAVAILABLE, "0"
+keyPressAction:
+	.db	0, 0
+dispAction:
+	.db	0, 0
 
 .end
 .end
