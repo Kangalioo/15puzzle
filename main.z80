@@ -386,18 +386,7 @@ calculateDataFieldAddress:
 .echo	$
 .echo	".\n"
 calculateDataFieldCoordinates:
-	; hl = c * (width)
-	ld	h, c
-	ld	a, (width)
-	ld	e, a
-	push	bc; To keep 'bc'
-	call	hTimesE
-	pop	bc
-	
-	; hl += b
-	ld	d, 0
-	ld	e, b
-	add	hl, de
+	; STUB
 	
 	ret
 ;calculateDataFieldAddress
